@@ -7,8 +7,6 @@ import app.morphe.patcher.extensions.InstructionExtensions.instructions
 import app.morphe.patcher.methodCall
 import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.patch.bytecodePatch
-import app.template.patches.shared.cert.autoSha1
-import app.template.patches.shared.cert.extractApkCertificatePatch
 import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
@@ -60,17 +58,24 @@ val spoofFirebaseCertHashPatch = bytecodePatch(
     """.trimIndent(),
     default = false,
 ) {
-    dependsOn(extractApkCertificatePatch)
+    val certificateHash by stringOption(
+        name = "certificateHash",
+    )
 
     execute {
-        val hash = autoSha1
-            ?.uppercase()
-            ?: throw PatchException(
-                "No certificate found in META-INF and no certificateHash supplied. " +
-                    "Provide the 40-char SHA-1 hex fingerprint via the option."
-            )
+        val hash = certificateHash
+            .replace(":", "")
+            .replace(" ", "")
+            .uppercase()
 
-        // ── Fix 1: Override getFingerprintHashForPackage() to return original SHA-1 ──
+        if (!hash.matches(Regex("[0-9A-F]{40}"))) {
+            throw PatchException(
+                "certificateHash must be a 40-character SHA-1 hex fingerprint. " +
+                "Received: $certificateHash"
+            )
+        }
+
+        // ── Fix 1: Override getFingerprintHashForPackage() to return supplied SHA-1 ──
         //
         // This is the authoritative source of the cert hash inside
         // FirebaseInstallationServiceClient. Patching here means every caller
